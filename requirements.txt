@@ -1,0 +1,12 @@
+# Core WAT
+python-dotenv>=1.0.0
+requests>=2.31.0
+rich>=13.0.0
+
+# Honeypot
+asyncssh>=2.14.0
+
+# Analysis
+pandas>=2.0.0
+scipy>=1.11.0
+matplotlib>=3.8.0

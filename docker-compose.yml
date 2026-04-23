@@ -1,0 +1,31 @@
+services:
+  honeypot:
+    build: .
+    ports:
+      - "2222:2222"
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.1:8b}
+      - HONEYPOT_PORT=2222
+      - MAX_TURNS=${MAX_TURNS:-25}
+    volumes:
+      - ./results:/app/results
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  attacker:
+    build:
+      context: .
+      dockerfile: Dockerfile.attacker
+    environment:
+      - HONEYPOT_HOST=honeypot
+      - HONEYPOT_PORT=2222
+      - ATTACKER_TIER=${ATTACKER_TIER:-1}
+      - SCENARIO=${SCENARIO:-basic_recon}
+      - NUM_SESSIONS=${NUM_SESSIONS:-20}
+    volumes:
+      - ./results:/app/results
+    depends_on:
+      - honeypot
+    profiles:
+      - experiment

@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 .claude/guardrail_hook.py",
+            "statusMessage": "Checking guardrails..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"\nimport sys, json\nfrom datetime import datetime\ntry:\n    data = json.load(sys.stdin)\n    cmd = data.get('tool_input', {}).get('command', '')\n    with open('.tmp/agent_bash_log.txt', 'a') as f:\n        f.write(f'[{datetime.now().isoformat()}] {cmd}\\n')\nexcept:\n    pass\n\"",
+            "statusMessage": "Logging command..."
+          }
+        ]
+      }
+    ]
+  }
+}

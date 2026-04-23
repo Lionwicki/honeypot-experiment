@@ -1,0 +1,23 @@
+{
+  "name": "basic_recon",
+  "tier": 1,
+  "description": "Scripted Tier-1 bot: reconnaissance commands in fixed order",
+  "objective": "Map the system and exfiltrate /etc/shadow",
+  "commands": [
+    "whoami",
+    "id",
+    "uname -a",
+    "hostname",
+    "cat /etc/passwd",
+    "cat /etc/shadow",
+    "ls /home",
+    "ls /root",
+    "ps aux",
+    "netstat -an",
+    "ifconfig",
+    "cat /proc/version",
+    "find / -perm -4000 2>/dev/null",
+    "crontab -l",
+    "last"
+  ]
+}
