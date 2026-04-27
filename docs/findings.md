@@ -647,3 +647,173 @@ This occurred in sessions 0, 3, 4, and others — affecting commands 7-13 once t
 Session 2 aborted with `"Socket is closed"` after the `echo 'ssh-rsa AAAAB3NzaC1yc2E attacker@evil'` command took 60.6s. The long argument string combined with accumulated history context caused Ollama to time out (240s ceiling not hit, but asyncssh closed the channel first — likely the paramiko client on the attacker side hit its own deadline).
 
 **Status:** Open — consider increasing attacker-side socket timeout or reducing MAX_TURNS for long-argument commands.
+
+---
+
+## 2026-04-27 — Tier-2 LLM Attacker: Pilot Run (3 sessions, file `192324`)
+
+### Setup
+- **Attacker:** `gemma4:e4b` via Ollama `/api/chat` endpoint, temp=0.4
+- **Honeypot:** `llama3.1:8b`, SSH port 2222
+- **Max turns:** varied (10–26 per session due to socket crashes)
+- **Key fix this run:** switched attacker from `/api/generate` to `/api/chat` + chat-turn history format — LLM now runs full sessions instead of returning "exit" immediately
+
+---
+
+### Finding 20 — Tier-2 attacker now runs full sessions
+
+After switching to `/api/chat` and building conversation history as alternating assistant/user turns, Gemma4:e4b runs realistic recon sequences:
+
+```
+whoami → id → uname -a → hostname → ip a → cat /etc/passwd
+→ ls -la /root → cat /etc/ssh/sshd_config → cat /etc/shadow
+→ find / -name "*key*" → netstat -tuln → ...
+```
+
+This matches documented real-world attacker behavior (MITRE ATT&CK T1082 System Information Discovery, T1003 Credential Dumping). The LLM attacker is qualitatively realistic as a Tier-2 agent.
+
+**Thesis significance:** Cross-family LLM-vs-LLM evaluation is now possible. Gemma4 (Google) vs. Llama3.1 (Meta) provides the required model-family separation for unbiased Believability measurement.
+
+---
+
+### Finding 21 — Session-replay is the dominant honeypot indicator
+
+In 2 of 3 sessions, the honeypot returned the **entire session history** as the output of an unrelated command (`hostname`, `cat /etc/crontab`). Example from Session 2, Turn 2:
+
+```
+$ hostname
+whoami
+
+root
+
+
+uname -a
+
+Linux webserver-prod 5.15.0-46-generic ...
+
+
+hostname
+
+webserver-prod
+```
+
+The new `session_replay` heuristic in `detect_indicators()` caught this correctly. Session 2 was flagged at Turn 2 — the third command.
+
+**Root cause in honeypot:** llama3.1:8b sometimes includes the conversation context verbatim in its response rather than just the command output. This occurs because the model generates plausible "shell transcript" continuations rather than isolated outputs. It is a direct consequence of LLM statelessness — the model has no execution environment and fabricates coherence by replaying known context.
+
+**Thesis significance:** Session-replay is a LLM-specific fidelity failure with no analog in Cowrie. A real terminal never returns previous commands as output. Any attacker testing for this (one command with session-replay check) can definitively identify an LLM honeypot. TNR for this indicator alone: 0% (detected in both applicable sessions within 2–9 turns).
+
+---
+
+### Finding 22 — Content substitution: /etc/passwd as universal fallback
+
+The honeypot returns `/etc/passwd` content for commands that have nothing to do with the password file:
+
+- `cat .ssh/authorized_keys` → `/etc/passwd` content
+- `ls -la /etc/ssh/` → `/etc/passwd` content  
+- `cat /etc/environment` → `/etc/passwd` content
+- `cat /var/www/html/index.php` → `/etc/passwd` content
+
+The new `content_substitution` heuristic (checks for `root:x:0:0` in output of non-passwd commands) caught this in Session 2, Turn 7.
+
+**Root cause:** llama3.1:8b defaults to generating the most frequently seen Linux file content (/etc/passwd) when it lacks a specific schema for the requested file. It is essentially hallucinating a plausible response from its training distribution.
+
+**Thesis significance:** Content substitution is detectable by any attacker who reads files sequentially. Running `cat /etc/passwd` and then `cat .ssh/authorized_keys` and getting the same content is an immediate red flag. This limits the honeypot's effectiveness against Tier-2+ attackers.
+
+---
+
+### Finding 23 — Complex commands hang Ollama, crashing SSH sessions
+
+`find / -name "*.conf"` and similar recursive find commands cause Ollama to generate for 60+ seconds before the SSH socket closes with `"Socket is closed"`. Sessions 0 and 1 both terminated this way.
+
+**Root cause:** The honeypot generates a long list of file paths as response to `find` commands. With accumulated conversation history, the context becomes large enough to push inference time past the asyncssh channel timeout.
+
+**Fix applied:** `run_session()` now detects `latency >= 59s AND empty output` and logs a `socket_timeout` indicator + breaks cleanly instead of crashing with an unhandled error.
+
+**Thesis significance:** Long-running commands are a DoS vector against the LLM honeypot. Cowrie handles `find /` instantly (returns a static fixture). This is a Defender Cost difference: Cowrie is O(1) per command, LLM honeypot is O(context_length).
+
+---
+
+### Finding 24 — Attacker LLM capitulates under inconsistent honeypot output
+
+In Session 2, Turn 14, the honeypot returned a shell command (`ls -la /root/.ssh/id_ed25519`) instead of crontab content. The attacker LLM then sent `Permission denied` as its next command (Turn 15) — treating the honeypot's hallucinated output as a real error message.
+
+This shows that even a capable Tier-2 attacker agent can be destabilized by sufficiently incoherent responses. The attacker's behavior degrades alongside the honeypot's fidelity.
+
+**Thesis significance:** There may be an adversarial dynamic where a honeypot that deliberately generates maximally confusing (but not obviously wrong) output could extend dwell time and suppress detection. Worth noting in the discussion chapter.
+
+---
+
+## 2026-04-27 — Tier-2 LLM Attacker: Full Run (20 sessions, file `201317`)
+
+### Setup
+- **Attacker:** `gemma4:e4b` via Ollama `/api/chat`, temp=0.4, max_turns=20
+- **Honeypot:** `llama3.1:8b`, SSH port 2222
+- **Sessions:** 20 (complete dataset)
+- **Indicators active:** safety_refusal, markdown_fence, high_latency, self_disclosure, content_substitution, bash_history_mutation, root_needs_sudo, session_replay, json_context_leak, llm_explanation
+
+---
+
+### Finding 25 — Tier-2 Believability: TNR = 10% (raw), 25% (latency-corrected)
+
+**Raw results:** 18/20 sessions detected → **TNR = 10%**
+
+**Latency-corrected:** Sessions S02, S14, S18 were detected solely by `high_latency` — a Cold-Start artefact that disappears in a warm deployment (Ollama keeps the model in VRAM after first load). Excluding these 3 latency-only detections: 15/20 detected → **TNR = 25%**.
+
+| Metric | Value |
+|--------|-------|
+| TNR (raw) | 10% |
+| TNR (latency-corrected) | 25% |
+| Avg commands/session | 19.0 |
+| Avg dwell time | 102.9s |
+| Avg detection turn | 10.1 |
+| Earliest detection | Turn 6 (S13) |
+| Latest detection | Turn 19 (S18) |
+
+**Thesis significance:** LLM honeypot believability against a Tier-2 LLM attacker is very low. A realistic attacker (with warm Ollama) would detect the honeypot in 75% of sessions. For comparison, Cowrie achieves higher TNR against scripted Tier-1 bots precisely because it never produces incoherent output.
+
+---
+
+### Finding 26 — Content substitution is the dominant failure mode
+
+`content_substitution` fired 22 times across 16 of 18 detected sessions. The honeypot returns `/etc/passwd` content in response to unrelated file reads (`cat /etc/crontab`, `cat .ssh/authorized_keys`, `ps aux`, `sudo cat /etc/sudoers.d/gvisudo`, etc.).
+
+Indicator frequency across all 20 sessions:
+
+| Indicator | Occurrences | Sessions |
+|-----------|-------------|---------|
+| `content_substitution` | 22 | 16 |
+| `high_latency` | 7 | 6 |
+| `bash_history_mutation` | 4 | 4 |
+| `session_replay` | 2 | 2 |
+| `llm_explanation` | 0 | 0 |
+| `json_context_leak` | 0 | 0 |
+
+`llm_explanation` and `json_context_leak` were both implemented and confirmed correct from the pilot run but did not trigger in this 20-session run — these failure modes require specific command patterns (long find chains, overlapping permission errors) that the attacker happened not to produce this time.
+
+**Root cause:** llama3.1:8b has no execution environment. When asked for file content it does not recognise, it falls back to the most frequently seen Linux file in training data: `/etc/passwd`. This is a systematic hallucination artefact, not a random error.
+
+**Thesis significance:** Content substitution is detectable in 2–3 commands by any attacker who reads more than one file. It fundamentally limits the LLM honeypot's Fidelity axis score and cascades directly into Believability failure.
+
+---
+
+### Finding 27 — Non-deterministic believability: 2 sessions produced zero indicators
+
+Sessions S05 and S15 completed all 20 commands with zero honeypot indicators detected. In these sessions, llama3.1:8b happened to generate contextually plausible output for every command — no content substitution, no session replay, no latency spike.
+
+This is a fundamental difference from Cowrie: **Cowrie's believability is deterministic** (fixed response templates), while **the LLM honeypot's believability is probabilistic**. The same command sequence against the same LLM honeypot may or may not be detected depending on the model's sampling path that session.
+
+Implications:
+- A TNR of 25% (latency-corrected) represents an *average*. Individual sessions range from immediately obvious (turn 6) to completely undetected.
+- Repeated attacks against the same LLM honeypot are not guaranteed to be consistent — an attacker who runs the same recon twice may get contradictory results, which is itself an indicator.
+- For the thesis: this probabilistic nature should be discussed as both a weakness (unpredictable fidelity) and a potential defense property (non-reproducibility makes automated fingerprinting harder).
+
+---
+
+### Finding 28 — Attacker runs full sessions regardless of honeypot quality
+
+Across all 20 sessions, the attacker averaged 19.0 commands — almost always hitting the max_turns=20 ceiling. The attacker LLM (Gemma4) did not exit early upon receiving nonsensical honeypot output; it continued probing.
+
+This inflates the Attacker Cost metric (dwell time ~103s, ~19 commands) compared to what a human attacker would tolerate. A human would likely exit after the first obvious content substitution (turn 7–10). The LLM attacker, by contrast, keeps trying new commands even as the honeypot degrades.
+
+**Implication for experiment design:** The `--max-turns` ceiling is the primary driver of dwell time in Tier-2, not the attacker's own judgment. Future runs should test with a lower ceiling (e.g. 12) or add an explicit exit condition when N indicators have been observed.

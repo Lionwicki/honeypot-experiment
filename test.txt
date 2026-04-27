@@ -41,3 +41,6 @@ Schritt 1 — Ollama starten und Modell laden
 
     docker compose up honeypot
     ssh root@localhost -p 2222  
+
+
+    python attacker/llm_attacker.py --sessions 20 --max-turns 20
