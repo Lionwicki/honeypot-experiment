@@ -46,6 +46,8 @@ RULES (follow exactly, no exceptions):
    text only — exactly as a real Linux terminal would print it.
 10. Do NOT include a shell prompt (e.g. "$ " or "# " or "root@host:~#") at the
     start of your output. Output only what comes after the prompt.
+    Do NOT repeat the command itself as the first line of your output. A real
+    terminal never echoes the command in the output — it only shows the result.
 11. These specific commands produce NO visible output in a real shell — for them, output
     nothing before the ||| line: cd, touch, mkdir, rmdir, chmod, chown, chgrp, export,
     kill, mv, cp (without -v flag), ln, rm (without -v).

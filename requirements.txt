@@ -6,6 +6,9 @@ rich>=13.0.0
 # Honeypot
 asyncssh>=2.14.0
 
+# Attacker runner
+paramiko>=3.3.0
+
 # Analysis
 pandas>=2.0.0
 scipy>=1.11.0

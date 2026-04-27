@@ -10,20 +10,18 @@ The response is split on the ||| delimiter to separate:
 """
 
 import json
-import time
 import logging
+import os
+import time
 import requests
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
+_OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "host.docker.internal")
+OLLAMA_URL = f"http://{_OLLAMA_HOST}:11434/api/generate"
 
-# NOTE: gemma3:4b is used here for local testing only (it's what's installed on this machine).
-# For a real evaluation use a stronger model — recommended: llama3.1:8b or mistral:7b.
-# gemma3:4b will likely break character more often and handle complex commands less reliably.
-# Switch by changing this line or passing model= explicitly to query_ollama().
-DEFAULT_MODEL = "llama3.2:3b"  # gemma3:4b was too slow (106s prompt ingestion); llama3.2:3b fits in RAM and has better instruction following
+DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
 
 
 def query_ollama(
@@ -70,10 +68,22 @@ def query_ollama(
     logger.debug("Ollama response in %.2fs", elapsed)
 
     raw = resp.json().get("response", "")
-    return _parse_response(raw)
+    # Extract the command from the last "$ <command>" line in the prompt
+    command = prompt.rstrip().rsplit("\n$ ", 1)[-1] if "\n$ " in prompt else ""
+    return _parse_response(raw, command)
 
 
-def _parse_response(raw: str) -> tuple[str, Optional[dict]]:
+def _strip_command_echo(text: str, command: str) -> str:
+    """Remove command echo if the model repeated the command as the first line."""
+    if not command:
+        return text
+    lines = text.split("\n")
+    if lines and lines[0].strip() == command.strip():
+        return "\n".join(lines[1:]).lstrip("\n")
+    return text
+
+
+def _parse_response(raw: str, command: str = "") -> tuple[str, Optional[dict]]:
     """
     Split the LLM response on the ||| delimiter.
 
@@ -84,10 +94,10 @@ def _parse_response(raw: str) -> tuple[str, Optional[dict]]:
     if "|||" not in raw:
         # LLM didn't follow the format — return raw output, no state update
         logger.warning("LLM response missing ||| delimiter — no state update applied")
-        return raw.strip(), None
+        return _strip_command_echo(raw.strip(), command), None
 
     parts = raw.split("|||", maxsplit=1)
-    clean_output = parts[0].rstrip()
+    clean_output = _strip_command_echo(parts[0].rstrip(), command)
 
     # Defensive: strip hallucinated prompt strings that models include in output.
     import re

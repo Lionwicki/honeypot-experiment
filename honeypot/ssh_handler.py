@@ -68,6 +68,9 @@ class LLMShellSession(asyncssh.SSHServerSession):
     def shell_requested(self):
         return True
 
+    def session_started(self):
+        self._write_prompt()
+
     def data_received(self, data: str, datatype):
         """Called for every chunk of data the attacker sends."""
         for char in data:

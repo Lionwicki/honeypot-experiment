@@ -1,0 +1,43 @@
+Schritt 1 — Ollama starten und Modell laden                                                                                                                                                                       
+  # Prüfe ob Ollama installiert ist                                                                        
+  ollama --version
+                                                                                                           
+  # Modell pullen (llama3.2:3b ist ~2 GB, läuft auch ohne GPU)                                             
+  ollama pull llama3.2:3b                                                                                  
+                                                                                                           
+  # Ollama im Hintergrund starten (falls nicht als Windows-Dienst aktiv)                                   
+  ollama serve
+
+  Sobald Ollama läuft, kannst du es kurz testen:
+  curl http://localhost:11434/api/tags
+  Das sollte JSON mit deinen Modellen zurückgeben.
+
+  Schritt 2 — Honeypot starten (in neuem Terminal)
+
+  # venv aktivieren
+  source .venv/Scripts/activate
+
+  # Honeypot direkt starten (kein Docker nötig für den ersten Test)
+  python -m honeypot.ssh_handler
+
+  Du solltest sehen: LLM honeypot listening on 0.0.0.0:2222
+
+  Schritt 3 — SSH-Verbindung testen (in neuem Terminal)
+
+  ssh root@localhost -p 2222
+  # Passwort: beliebig (z.B. "root")
+
+  Dann einfach mal tippen:
+  whoami
+  id
+  ls /etc
+  exit
+
+
+
+    curl http://localhost:11434/api/tags
+
+
+
+    docker compose up honeypot
+    ssh root@localhost -p 2222  

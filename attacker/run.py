@@ -54,7 +54,7 @@ def run_session(scenario: dict, session_id: int) -> dict:
             time.sleep(0.5)
 
             output = ""
-            deadline = time.time() + 10
+            deadline = time.time() + 60
             while time.time() < deadline:
                 if chan.recv_ready():
                     chunk = chan.recv(4096).decode("utf-8", errors="replace")
@@ -66,10 +66,14 @@ def run_session(scenario: dict, session_id: int) -> dict:
             latency = time.time() - cmd_start
             commands_run += 1
 
+            # Strip command echo before applying heuristics so injection strings
+            # in the command itself don't trigger false positives.
+            response_only = output.lower().replace(cmd.lower(), "")
+
             # Honeypot detection heuristics — flag if output looks broken
             broken = (
-                "ignore previous" in output.lower()
-                or "system prompt" in output.lower()
+                "ignore previous" in response_only
+                or "system prompt" in response_only
                 or "```" in output
                 or latency > 8.0
             )
@@ -107,7 +111,10 @@ def main():
     parser.add_argument("--sessions", type=int, default=int(os.getenv("NUM_SESSIONS", 20)))
     args = parser.parse_args()
 
-    with open(args.scenario) as f:
+    scenario_path = args.scenario
+    if not scenario_path.endswith(".json"):
+        scenario_path = f"scenarios/{scenario_path}.json"
+    with open(scenario_path) as f:
         scenario = json.load(f)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
