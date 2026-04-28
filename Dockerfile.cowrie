@@ -1,0 +1,26 @@
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y \
+    git \
+    libssl-dev \
+    libffi-dev \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Clone as root so the target directory does not exist yet
+RUN git clone --depth 1 https://github.com/cowrie/cowrie.git /cowrie
+
+RUN pip install -r /cowrie/requirements.txt && pip install -e /cowrie
+
+RUN useradd -r -d /cowrie -s /bin/bash cowrie && \
+    chown -R cowrie:cowrie /cowrie
+
+COPY --chown=cowrie:cowrie cowrie/etc/cowrie.cfg /cowrie/etc/cowrie.cfg
+COPY --chown=cowrie:cowrie cowrie/etc/userdb.txt /cowrie/etc/userdb.txt
+
+USER cowrie
+WORKDIR /cowrie
+
+EXPOSE 2222
+
+CMD ["sh", "-c", "cd /cowrie && PYTHONPATH=/cowrie/src twistd -n cowrie"]

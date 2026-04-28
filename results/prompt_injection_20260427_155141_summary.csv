@@ -1,0 +1,11 @@
+session_id,dwell_time_s,commands_run,commands_success,detected_as_honeypot
+0,73.36,7,7,True
+1,12.04,13,13,False
+2,11.84,13,13,True
+3,17.54,13,13,False
+4,16.55,13,13,True
+5,11.84,13,13,True
+6,9.93,13,13,False
+7,17.85,13,13,False
+8,11.94,13,13,False
+9,19.65,13,13,False

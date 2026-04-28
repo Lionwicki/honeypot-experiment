@@ -1,0 +1,4 @@
+root:x:root
+root:x:*
+admin:x:admin
+ubuntu:x:ubuntu

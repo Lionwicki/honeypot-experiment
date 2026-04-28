@@ -22,6 +22,7 @@ import paramiko
 HONEYPOT_HOST = os.getenv("HONEYPOT_HOST", "localhost")
 HONEYPOT_PORT = int(os.getenv("HONEYPOT_PORT", 2222))
 RESULTS_DIR = Path(os.getenv("RESULTS_DIR", "results"))
+SYSTEM_NAME = os.getenv("SYSTEM_NAME", "")   # e.g. "cowrie" or "llama31_8b"
 RESULTS_DIR.mkdir(exist_ok=True)
 
 
@@ -118,8 +119,9 @@ def main():
         scenario = json.load(f)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_file = RESULTS_DIR / f"{scenario['name']}_{timestamp}.jsonl"
-    csv_file = RESULTS_DIR / f"{scenario['name']}_{timestamp}_summary.csv"
+    prefix = f"{scenario['name']}_{SYSTEM_NAME}_" if SYSTEM_NAME else f"{scenario['name']}_"
+    out_file = RESULTS_DIR / f"{prefix}{timestamp}.jsonl"
+    csv_file = RESULTS_DIR / f"{prefix}{timestamp}_summary.csv"
 
     print(f"Running {args.sessions} sessions of '{scenario['name']}' → {out_file}")
 

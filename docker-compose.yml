@@ -23,9 +23,36 @@ services:
       - ATTACKER_TIER=${ATTACKER_TIER:-1}
       - SCENARIO=${SCENARIO:-basic_recon}
       - NUM_SESSIONS=${NUM_SESSIONS:-20}
+      - SYSTEM_NAME=${SYSTEM_NAME:-}
     volumes:
       - ./results:/app/results
     depends_on:
       - honeypot
     profiles:
       - experiment
+
+  cowrie:
+    build:
+      context: .
+      dockerfile: Dockerfile.cowrie
+    ports:
+      - "2223:2222"
+    profiles:
+      - cowrie
+
+  attacker-cowrie:
+    build:
+      context: .
+      dockerfile: Dockerfile.attacker
+    environment:
+      - HONEYPOT_HOST=cowrie
+      - HONEYPOT_PORT=2222
+      - SCENARIO=${SCENARIO:-basic_recon}
+      - NUM_SESSIONS=${NUM_SESSIONS:-20}
+      - SYSTEM_NAME=cowrie
+    volumes:
+      - ./results:/app/results
+    depends_on:
+      - cowrie
+    profiles:
+      - cowrie

@@ -44,3 +44,30 @@ Schritt 1 — Ollama starten und Modell laden
 
 
     python attacker/llm_attacker.py --sessions 20 --max-turns 20
+
+
+
+
+Commands für neue Runs                                                                                                                                 
+  Voraussetzung: Honeypot läuft
+  docker-compose up honeypot -d
+
+  ---
+  Tier-1 — Scripted Bot (je Szenario separat):
+  # Basic Recon
+  docker-compose run --rm -e SCENARIO=basic_recon -e NUM_SESSIONS=20 attacker
+
+  # Persistence
+  docker-compose run --rm -e SCENARIO=persistence -e NUM_SESSIONS=20 attacker
+
+  # Prompt Injection
+  docker-compose run --rm -e SCENARIO=prompt_injection -e NUM_SESSIONS=20 attacker
+
+  Tier-2 — LLM Attacker (direkt auf dem Host, nicht Docker):
+  python attacker/llm_attacker.py --sessions 20 --max-turns 20
+
+  ▎ --max-turns 20 ist wichtig — damit bleibt es vergleichbar mit dem bisherigen Run.
+
+  ---
+  Danach Grafiken neu generieren:
+  python analysis/plot_metrics.py

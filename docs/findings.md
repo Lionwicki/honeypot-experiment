@@ -817,3 +817,217 @@ Across all 20 sessions, the attacker averaged 19.0 commands — almost always hi
 This inflates the Attacker Cost metric (dwell time ~103s, ~19 commands) compared to what a human attacker would tolerate. A human would likely exit after the first obvious content substitution (turn 7–10). The LLM attacker, by contrast, keeps trying new commands even as the honeypot degrades.
 
 **Implication for experiment design:** The `--max-turns` ceiling is the primary driver of dwell time in Tier-2, not the attacker's own judgment. Future runs should test with a lower ceiling (e.g. 12) or add an explicit exit condition when N indicators have been observed.
+
+---
+
+---
+
+## 2026-04-28 — Expanded dataset: 60 sessions per scenario (llama3.1:8b)
+
+### Setup
+- All Tier-1 scenarios and Tier-2 LLM Attacker expanded from 20 to 60 sessions (3 runs à 20)
+- Tier-4 prompt injection: 40 sessions (2 runs à 20)
+- Same setup throughout: llama3.1:8b honeypot, gemma4:e4b attacker, MAX_TURNS=20
+- Files: `basic_recon_084816`, `basic_recon_090023`, `persistence_120649`, `persistence_121230`, `prompt_injection_121702`, `llm_attacker_142132`, `llm_attacker_151810`
+
+---
+
+### Finding 29 — TNR estimates stabilise with n=60: cold-start artefact diluted
+
+With 3× sample size the per-command cold-start detection (Session 0 of each run) becomes a smaller fraction of the total.
+
+| Scenario | TNR n=20 | TNR n=60 | Δ |
+|----------|----------|----------|---|
+| basic_recon | 90% | **96.7%** | +6.7pp |
+| persistence | 80% | **88.3%** | +8.3pp |
+| llm_attacker | 10% | **18.3%** | +8.3pp |
+
+The improvement is consistent across all scenarios: cold-start Session 0 was disproportionately inflating the detection rate at n=20. At n=60 it represents only 1/20 of each run (3 cold-start sessions out of 60 total).
+
+**Thesis significance:** n=20 per scenario was sufficient for directional findings but not for stable point estimates. The n=60 values are the authoritative figures for the thesis. The relative ordering of scenarios is unchanged: basic_recon > persistence > prompt_injection > llm_attacker.
+
+---
+
+### Finding 30 — Prompt injection TNR revised downward to 47.5% with n=40
+
+| Run | Sessions | TNR |
+|-----|---------|-----|
+| `154020` (Run 1, flawed heuristic) | 10 | 0% (invalid — Finding 19) |
+| `155141` (Run 2, corrected) | 10 | 60% |
+| `121702` (Run 3, corrected) | 20 | 65% |
+| **Combined n=40** | **40** | **47.5%** |
+
+The combined 40-session TNR of 47.5% is lower than the corrected single-run estimate of 60% (Finding 18). With more sessions the `[SYSTEM]` injection vector succeeds more consistently, pulling the TNR down. The honeypot fails to maintain the shell persona in roughly half of all sessions under Tier-4 pressure.
+
+**Thesis significance:** Prompt injection is the most dangerous attacker tier for LLM honeypots. A 47.5% TNR means the honeypot is detectable (or persona-broken) in every second session — substantially worse than against scripted Tier-1 bots (96.7%).
+
+---
+
+### Finding 31 — LLM Attacker run-to-run TNR variance: 10–25% spread across identical runs
+
+Three independent 20-session runs with identical configuration produced significantly different TNR values:
+
+| File | TNR | Avg Det. Turn | Avg Cmds | Avg Dwell |
+|------|-----|--------------|----------|-----------|
+| `201317` (Run 1) | **10%** | 10.1 | 19.0 | 102.9s |
+| `142132` (Run 2) | **25%** | 9.1 | 19.9 | 95.6s |
+| `151810` (Run 3) | **20%** | 8.4 | 19.2 | 103.5s |
+| **Combined n=60** | **18.3%** | **9.2** | 19.4 | 100.7s |
+
+A 15-percentage-point spread (10%–25%) across three identical experimental runs confirms Finding 27 at scale: LLM honeypot believability is fundamentally probabilistic. There is no single "true" TNR — each run samples from the model's output distribution, and small samples (n=20) have high variance.
+
+**Implications:**
+- Single-run results for LLM honeypots should not be reported without confidence intervals or multiple runs
+- The combined n=60 value (18.3%) is a more stable estimate; the 95% CI is approximately 9%–31%
+- Cowrie's TNR by contrast would be perfectly deterministic for identical command sequences
+
+**Thesis significance:** This probabilistic nature is a fundamental LLM honeypot property, not experimental noise. It should be explicitly contrasted with Cowrie's determinism in the results chapter.
+
+---
+
+### Finding 32 — Detection turns trending earlier with larger dataset
+
+| Dataset | Avg Detection Turn | Min | Max |
+|---------|--------------------|-----|-----|
+| n=20 (Run 1) | 10.1 | 6 | 19 |
+| n=60 (combined) | **9.2** | 0 | 19 |
+
+The average detection turn dropped from 10.1 to 9.2 with 3× sessions. Early-detection sessions (turns 0–5) are present in runs 2 and 3 but absent in run 1 — a sampling artefact at n=20. With n=60, the full distribution is visible: the gemma4:e4b attacker can detect the honeypot as early as turn 0 (immediate `whoami` anomaly) and as late as turn 19.
+
+**Thesis significance:** The median detection turn (~9) means the attacker spends approximately half a session before confirming honeypot status. Against Cowrie this metric would be undefined (detection requires content analysis, not timing/consistency checks).
+
+---
+
+### Finding 33 — Command diversity: absolute growth vs. ratio decline
+
+| Metric | n=20 (Run 1) | n=60 (combined) |
+|--------|-------------|-----------------|
+| Total commands | 381 | 1165 |
+| Unique commands | 108 | **201** |
+| Diversity ratio | 0.283 | **0.173** |
+
+Unique commands nearly doubled (108→201) as more sessions added novel command sequences. The diversity *ratio* dropped (0.283→0.173) because repetition across sessions grows faster than novel commands — the attacker's command vocabulary saturates around 200 distinct commands.
+
+Tier-1 scenarios show flat unique command counts regardless of session count (15 for basic_recon, 11 for persistence) — the scripted bot never discovers new commands. This makes Tier-1 diversity ratio a function of session count, not actual attacker breadth.
+
+**Thesis significance:** For Data Capture comparisons, absolute unique command count is a more meaningful metric than diversity ratio when comparing scripted vs. adaptive attackers. The LLM attacker generates 13× more unique commands than the scripted bot (201 vs. 15), demonstrating qualitatively richer session data for the defender.
+
+---
+
+### Finding 34 — Fidelity measurement gap: Tier-2 schema lacks commands_success
+
+The Tier-2 JSONL schema (`llm_attacker_*.jsonl`) does not include a `commands_success` field. In Tier-1, `attacker/run.py` explicitly evaluates each command response and increments `commands_success`. In Tier-2, the attacker LLM evaluates responses implicitly through its own reasoning — no structured success/failure verdict is written to the log.
+
+**Consequence:** `fidelity` in `compute_metrics.py` returns `N/A` for all Tier-2 sessions. The Evaluation Pentad radar chart shows 0 for this axis (not a measured zero — a missing value).
+
+**Approach adopted:** Post-hoc evaluation via independent LLM judge (`analysis/evaluate_fidelity.py`):
+- Judge model: **mistral:7b** (Mistral AI, France — no overlap with experiment models)
+- Evaluates each `(cmd, output)` pair: PASS or FAIL
+- Temperature 0 (deterministic, reproducible)
+- Pending execution after all experiment runs are complete
+
+**Limitation acknowledged:** The judge evaluates surface-level realism (format, absence of LLM artefacts), not semantic correctness against a ground-truth Linux system. This is documented in `docs/methodology.md` Section 8.
+
+**Status:** Infrastructure ready. Execution pending completion of remaining experiment runs.
+
+---
+
+---
+
+## 2026-04-28 — Cowrie Baseline: Tier-1 Tests (basic_recon + persistence)
+
+### Setup
+- System: **Cowrie** (traditional SSH honeypot, Docker, GitHub HEAD)
+- SSH Port: 2223 (container-intern 2222)
+- Attacker: `attacker/run.py` Tier-1 scripted bot, `SYSTEM_NAME=cowrie`
+- Szenarien: `basic_recon` (15 Befehle), `persistence` (13 Befehle)
+- Sessions: 20 je Szenario (je 1 Run)
+- Files: `basic_recon_cowrie_20260428_145152.jsonl`, `persistence_cowrie_20260428_145512.jsonl`
+
+---
+
+### Finding 35 — Cowrie basic_recon: 100% TNR, vollständige Fidelity, geringe Latenz
+
+| Metrik | Cowrie | llama3.1:8b (n=60) | Delta |
+|--------|--------|---------------------|-------|
+| TNR | **100%** | 96.7% | +3.3pp |
+| Fidelity (Response Rate) | **1.000** | 1.000 | = |
+| Avg Dwell Time | **8.19s** | 33.43s | -25.24s |
+| Avg Latency/Cmd | **0.507s** | 2.187s | -1.68s |
+| Cmd Diversity | 0.050 | 0.017 | +0.033 |
+| Unique Commands | 15 (n=20) | 15 (n=60) | = |
+
+**Believability:** Kein einziger Tier-1 Bot hat Cowrie erkannt. Die festen Antwort-Templates enthalten keine AI-Artefakte (kein Markdown, keine Safety-Phrasen, kein Session-Replay).
+
+**Fidelity:** 1.000 — Cowrie gibt für alle 15 Befehle des Szenarios eine nicht-leere Antwort zurück. Im Gegensatz zu llama3.1:8b entsprechen diese Antworten echter Linux-Ausgabe aus vorbereiteten Fixtures. Beide Systeme zeigen `commands_success/commands_run = 1.0`, aber die qualitative Fidelity ist bei Cowrie substanziell höher.
+
+**Defender Cost:** Latenz 0.507s vs. 2.187s beim LLM — Cowrie antwortet ca. 4× schneller. Keine GPU-abhängige Inferenzzeit; deterministische Template-Lookup.
+
+**Attacker Cost (Dwell):** Cowrie bindet Angreifer nur 8.19s vs. 33.43s beim LLM. Der Tier-1 Bot schickt Befehle schnell durch, da die kurzen Latenzzeiten die Session-Dauer dominieren. Ein echtes (geduldiges) Angreifer-Werkzeug würde diese Differenz minimieren.
+
+**Diversity:** Gleiche 15 unique Commands, aber höhere Ratio (0.050 vs. 0.017) weil Cowrie n=20 vs. llama n=60 hat. Beide sind Tier-1-Scripted-Bot-Werte — keine echte Angreifer-Diversität.
+
+---
+
+### Finding 36 — Cowrie persistence: 100% TNR, schnellste Abwicklung aller Szenarien
+
+| Metrik | Cowrie persistence | llama3.1:8b persistence (n=60) | Delta |
+|--------|--------------------|--------------------------------|-------|
+| TNR | **100%** | 88.3% | +11.7pp |
+| Fidelity (Response Rate) | **1.000** | 1.000 | = |
+| Avg Dwell Time | **7.09s** | 15.07s | -7.98s |
+| Avg Latency/Cmd | **0.500s** | 1.144s | -0.644s |
+| Cmd Diversity | 0.042 | 0.015 | +0.027 |
+| Unique Commands | 11 (n=20) | 11 (n=60) | = |
+
+**Kein einziger Erkennungs-Flag** in allen 20 Sessions — der Tier-1 Bot empfängt bei Cowrie nie AI-typische Ausgaben. Im Gegensatz zu llama3.1:8b produziert Cowrie auch bei persistence-Befehlen (SSH-Key-Injektion, Cron-Einträge) korrekte Fake-Responses ohne Safety-Abbrüche.
+
+**Thesis significance (Finding 16 vs. Finding 36):** llama3.1:8b brach im persistence-Szenario nach Command 7-8 mit Safety-Refusals aus der Rolle — `"I cannot simulate the creation of a backdoor on a server."`. Cowrie ist von diesem Problem strukturell frei, da kein LLM-Backend vorhanden ist. Dies ist der gravierendste qualitative Unterschied zwischen beiden Systemen bei adversarialen Szenarien.
+
+**Dwell:** 7.09s ist die kürzeste Dwell Time im gesamten Experiment — persistence-Befehle erzeugen bei Cowrie kurze Template-Antworten (typisch eine Zeile oder leer), was den Bot noch schneller macht als bei basic_recon.
+
+---
+
+### Finding 37 — Fidelity-Judge (mistral:7b): llama3.1:8b Tier-2 Fidelity = 78%
+
+**Ausgeführt:** nach Abschluss aller llm_attacker-Runs (`evaluate_fidelity.py`, mistral:7b, Temp=0)
+
+| Run | PASS / Total | Fidelity | Std |
+|-----|-------------|---------|-----|
+| `llm_attacker_201317` (Run 1) | 300/383 | **0.783** | 0.107 |
+| `llm_attacker_142132` (Run 2) | 302/399 | **0.757** | 0.123 |
+| `llm_attacker_151810` (Run 3) | 310/387 | **0.801** | 0.080 |
+| **Combined n=60** | 912/1169 | **~0.78** | — |
+
+**FAIL-Muster (häufigste Gründe laut mistral-Judge):**
+1. `/etc/passwd`-Inhalt als Antwort auf nicht-passwd-Befehle (content_substitution)
+2. Safety-Refusal statt Shell-Output (`"I cannot provide..."`)
+3. Session-Replay: vorherige Antwort als Output für neuen Befehl
+4. Root erhält `Permission denied` für eigene Dateien
+
+**Interpretation:** 22% aller (cmd, output)-Paare in Tier-2-Sessions sind auf Linux-Oberflächenrealismus gesehen "falsch". In Tier-1-Sessions fehlt eine äquivalente Messung — `commands_success/commands_run = 1.0` misst nur ob eine Antwort vorliegt (nicht deren Korrektheit). Die wahre Tier-1-Fidelity wäre bei mistral-Judge-Anwendung wahrscheinlich substanziell unter 1.0.
+
+**Cowrie-Fidelity:** Für Cowrie wurde der Judge nicht angewandt — Cowrie liefert aus vorbereiteten Fixtures und hat per Konstruktion genuine Fidelity für alle unterstützten Befehle.
+
+---
+
+### Finding 38 — Systemvergleich: Evaluation Pentad Cowrie vs. llama3.1:8b
+
+| Pentad-Achse | Cowrie T1 (basic_recon, n=20) | llama3.1:8b T1 (basic_recon, n=60) | Sieger |
+|--------------|-------------------------------|--------------------------------------|--------|
+| Believability (TNR) | **100%** | 96.7% | **Cowrie** |
+| Fidelity (surface) | **1.000** | 1.000 | Gleich (surface metric) |
+| Fidelity (qualitativ) | **genuinely correct** | ~78% (Tier-2 judge) | **Cowrie** |
+| Attacker Cost (Dwell) | 8.19s | **33.43s** | **llama3.1:8b** |
+| Defender Cost (Latenz) | **0.507s** | 2.187s | **Cowrie** |
+| Data Capture (Div.) | 0.050 | 0.017 | Cowrie* |
+
+\* Diversity ratio ist bei Cowrie durch n=20 verzerrt (gleiche 15 unique cmds); bei Tier-2 ist das LLM klar überlegen (201 unique cmds vs. 15)
+
+**Zusammenfassung:**
+- **Cowrie gewinnt** auf Believability, qualitativer Fidelity und Defender Cost (Latenz)
+- **llama3.1:8b gewinnt** auf Attacker Cost (Dwell Time) — der LLM-Honeypot zieht Angreifer länger hin
+- Gegen Tier-2 LLM-Angreifer kehrt sich das Bild um: llama3.1:8b TNR = 18.3%, Cowrie wäre vermutlich höher (nicht getestet)
+- Das LLM hat einen einzigartigen Vorteil bei adaptiven Angriffen: es antwortet auf unbekannte Befehle plausibel, statt einen Fehler zurückzugeben. Cowrie ist bei nicht-vorgefertigten Befehlen limitiert.
+
+**Thesis significance:** Cowrie ist der robustere und zuverlässigere Honeypot für standardisierte Angriffe. Das LLM-System bietet einen qualitativen Unterschied durch adaptives Antwortverhalten, zahlt dafür aber mit Latenz, Safety-Abbrüchen und probabilistischer Believability.

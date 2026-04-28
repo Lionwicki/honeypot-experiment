@@ -3,7 +3,8 @@
     "allow": [
       "Bash(python *)",
       "Bash(curl *)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(pip install *)"
     ]
   }
 }
